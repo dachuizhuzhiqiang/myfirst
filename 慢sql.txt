@@ -1,0 +1,68 @@
+SELECT 
+SUM(cn.debtorcount) mdebtorcount, 
+SUM(cn.target_money) moverdue_money,
+SUM(cn.cuihui_money) mcuihuimoney,
+SUM(cn.cuihui_money)/SUM(cn.target_money) mhuikuanlv,
+SUM(cn.cuihuihushu) mcuihuihushu,
+SUM(cn.cuihuihushu)/SUM(cn.debtorcount) mcuihuihushulv,
+SUM(cn.client_money) mclient_money,
+SUM(cn.collection_money) mcollection_money,
+SUM(cn.client_money)-SUM(cn.collection_money) mcommissionMargin,
+sum(zongjihua) zongjihua,
+SUM(cn.cuihui_money)/sum(zongjihua) zongjihualv,
+sum(dangqian) dangqian,
+SUM(cn.cuihui_money)/sum(dangqian) dangqianlv,
+sum(fuwu) fuwufei
+from (
+SELECT 
+  COUNT(case when et.isdelete!='2' then et.did END ) debtorcount,
+ sum(et.total_amount) target_money,
+ SUM(et.has_also_money) cuihui_money,
+ SUM(et.has_also_money)/sum(et.total_amount) huikuanlv,
+count(DISTINCT(case when et.has_also_money>0 then CONCAT(et.client_order_num,et.debtor_name,et.debtor_id_num,et.contract_num) else Null END)) cuihuihushu,
+SUM(et.has_also_money*et.agent_rate) client_money,
+SUM(et.has_also_money*et.new_agent_rate) collection_money,
+SUM(et.has_also_money*et.agent_rate)-SUM(et.has_also_money*et.new_agent_rate) commissionmargin,
+SUM(et.xiayouzong/100) zongjihua,
+SUM(et.xiayoudangqian/100) dangqian,
+SUM(et.pl*et.xiayoudangqianhas/100)  fuwu
+ from 
+(SELECT
+et.client_order_num,
+ ddi.id did,
+  ddi.total_amount,
+  ddi.has_also_money,
+  ddi.agent_rate,
+  ddi.new_agent_rate,
+	ddi.isdelete,
+	ddi.debtor_id_num,
+ddi.contract_num,
+   ddi.debtor_name,
+	 SUBSTRING_INDEX(  SUBSTRING_INDEX(ddi.down_kpi,',',(TIMESTAMPDIFF(DAY,cco.pick_time,NOW())+1)/7),',',-1),
+  (  case when et.audit_status='4' or et.audit_status='5' then SUBSTRING_INDEX(  SUBSTRING_INDEX(ddi.down_kpi,',',CEIL((TIMESTAMPDIFF(DAY,cco.pick_time,et.UPDATE_TIME)+1)/7)),',',-1)
+     ELSE  substring_index(ddi.down_kpi,',',-1) END )*ddi.ago_money xiayouzong,
+ (  case when et.audit_status='4' or et.audit_status='5' then SUBSTRING_INDEX(  SUBSTRING_INDEX(ddi.down_kpi,',',CEIL((TIMESTAMPDIFF(DAY,cco.pick_time,et.UPDATE_TIME)+1)/7)),',',-1)
+   ELSE   SUBSTRING_INDEX(  SUBSTRING_INDEX(ddi.down_kpi,',',CEIL((TIMESTAMPDIFF(DAY,cco.pick_time,now())+1)/7)),',',-1) END )*ddi.ago_money*
+    	(case
+		when et.audit_status='8' or et.audit_status='10' then et.agent_term
+		when et.audit_status='4' or et.audit_status='5' then timestampdiff(DAY,cco.pick_time,et.UPDATE_TIME)+1
+		ELSE TIMESTAMPDIFF(DAY ,cco.pick_time,now())+1 end)/
+		(case
+		when et.audit_status='8' or et.audit_status='10' then et.agent_term
+		when ceil((TIMESTAMPDIFF(DAY ,cco.pick_time,now())+1)/7)*7>et.agent_term then et.agent_term
+		ELSE ceil((TIMESTAMPDIFF(DAY ,cco.pick_time,now())+1)/7)*7 end) xiayoudangqian,
+        ddi.has_also_money*ddi.new_agent_rate   xiayoudangqianhas,
+   cci.platform_rate pl
+
+FROM
+	e_client_target et,
+	d_debtor_info ddi,
+  c_collection_order cco,
+  c_collection_info cci
+WHERE
+	ddi.client_order_num = #{orderNum}
+AND et.id = ddi.client_target_id
+and cco.client_target_id=ddi.client_target_id
+and cci.id=cco.collection_info_id
+) et
+) cn
